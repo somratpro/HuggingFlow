@@ -98,18 +98,27 @@ ENV LANG=C.UTF-8 \
 
 ARG NODE_MAJOR=22
 
-# Install: Node.js (for health-server + Next.js runtime), nginx (reverse proxy), runtime tools
+# Install: nginx, curl, jq, gnupg (separate layer — cached independently)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates gnupg nginx jq \
-    && mkdir -p /etc/apt/keyrings \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (separate layer so apt cache miss doesn't re-download pip packages)
+RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] \
        https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
        > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
-    && pip3 install --no-cache-dir --break-system-packages huggingface_hub pyyaml \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Python helpers (separate layer + retries for flaky HF Spaces network)
+RUN pip3 install --no-cache-dir --break-system-packages --timeout 120 --retries 5 \
+        huggingface_hub pyyaml \
+    || (echo "pip retry 2" && pip3 install --no-cache-dir --break-system-packages --timeout 120 --retries 5 huggingface_hub pyyaml) \
+    || (echo "pip retry 3" && pip3 install --no-cache-dir --break-system-packages --timeout 120 --retries 5 huggingface_hub pyyaml) \
+    || (echo "ERROR: pip install failed after 3 attempts" && exit 1)
 
 # pnpm for `pnpm start` in Next.js runtime
 RUN corepack enable && corepack install -g pnpm@10.26.2
