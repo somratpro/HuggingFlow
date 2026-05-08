@@ -47,36 +47,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
-ENV UV_HTTP_TIMEOUT=300 \
+ENV UV_HTTP_TIMEOUT=600 \
     UV_CONCURRENT_DOWNLOADS=4
 
 WORKDIR /app
 COPY --from=source /src/backend ./backend
 
-# Strip markitdown[all] heavy extras not needed for web research:
-# speechrecognition (31MB), pdfminer-six (6MB), magika (15MB), onnxruntime (13MB)
+# Debug + patch markitdown: print every markitdown line found so we can see the exact format,
+# then strip [all] extras (speechrecognition 31MB, pdfminer-six 6MB, magika 15MB, onnxruntime 13MB)
 RUN python3 - <<'PY'
 import pathlib, sys
 patched = []
 for p in pathlib.Path("/app/backend").rglob("pyproject.toml"):
     t = p.read_text()
-    if "markitdown[all]" in t:
-        p.write_text(t.replace("markitdown[all]", "markitdown"))
-        patched.append(str(p))
-if patched:
-    print("Patched markitdown extras in:", patched)
-else:
-    print("WARNING: markitdown[all] not found — check pyproject.toml paths", file=sys.stderr)
+    if "markitdown" in t.lower():
+        print(f"Found in {p}:")
+        for line in t.splitlines():
+            if "markitdown" in line.lower():
+                print(f"  {repr(line)}")
+        if "markitdown[all]" in t:
+            p.write_text(t.replace("markitdown[all]", "markitdown"))
+            patched.append(str(p))
+            print("  -> patched")
+if not patched:
+    print("WARNING: markitdown[all] not found — extras will still be installed", file=sys.stderr)
 PY
-# Drop lockfile so resolver picks up the patched dependency
 RUN rm -f /app/backend/uv.lock
 
-# uv sync: retry up to 3x — uv caches completed downloads so retries only re-fetch the failed wheel
-# UV_CONCURRENT_DOWNLOADS=4 already set above to limit parallel connections on HF Spaces network
+# Retry uv sync up to 10x — uv caches downloaded wheels so each retry
+# only re-fetches the wheel(s) that failed or timed out previously
 RUN cd backend && \
-    uv sync || \
-    (echo "uv sync attempt 2..." && uv sync) || \
-    (echo "uv sync attempt 3..." && uv sync)
+    uv sync || (echo "retry 2"  && uv sync) || (echo "retry 3"  && uv sync) || \
+    (echo "retry 4"  && uv sync) || (echo "retry 5"  && uv sync) || \
+    (echo "retry 6"  && uv sync) || (echo "retry 7"  && uv sync) || \
+    (echo "retry 8"  && uv sync) || (echo "retry 9"  && uv sync) || \
+    (echo "retry 10" && uv sync) || \
+    (echo "ERROR: uv sync failed after 10 attempts" && exit 1)
 
 # ── Stage 4: Runtime ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
