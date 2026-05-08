@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ════════════════════════════════════════════════════════════════
 # HuggingFlow — DeerFlow Research Agent for Hugging Face Spaces
 # ════════════════════════════════════════════════════════════════
@@ -33,7 +34,12 @@ WORKDIR /app
 COPY --from=source /src/frontend ./frontend
 
 # pnpm virtual store uses hard links — COPY in later stages works correctly
-RUN cd frontend && pnpm install --frozen-lockfile
+# BuildKit cache mount makes pnpm install survive flaky HF Spaces network
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    cd frontend && \
+    ( pnpm install --frozen-lockfile \
+      || (echo "pnpm install retry 2" && pnpm install --frozen-lockfile) \
+      || (echo "pnpm install retry 3" && pnpm install --frozen-lockfile) )
 
 # SKIP_ENV_VALIDATION=1 bypasses t3-oss env checks (no secrets at build time)
 RUN cd frontend && SKIP_ENV_VALIDATION=1 pnpm build
@@ -48,42 +54,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_HTTP_TIMEOUT=120 \
-    UV_CONCURRENT_DOWNLOADS=4
+    UV_CONCURRENT_DOWNLOADS=4 \
+    UV_INDEX_URL=https://pypi.org/simple \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 COPY --from=source /src/backend ./backend
 
-# Debug + patch markitdown: print every markitdown line found so we can see the exact format,
-# then strip [all] extras (speechrecognition 31MB, pdfminer-six 6MB, magika 15MB, onnxruntime 13MB)
-RUN python3 - <<'PY'
-import pathlib, sys
-patched = []
-for p in pathlib.Path("/app/backend").rglob("pyproject.toml"):
-    t = p.read_text()
-    if "markitdown" in t.lower():
-        for needle, replacement in [
-            ("markitdown[all,xlsx]", "markitdown[xlsx]"),  # keep xlsx, drop all
-            ("markitdown[all]",      "markitdown"),         # fallback
-        ]:
-            if needle in t:
-                p.write_text(t.replace(needle, replacement))
-                patched.append(f"{p}: {needle!r} -> {replacement!r}")
-                break
-if patched:
-    print("Patched:", patched)
-else:
-    print("WARNING: no markitdown[all] variant found — heavy extras still included", file=sys.stderr)
-PY
-
-# Retry uv sync up to 10x — uv caches downloaded wheels so each retry
-# only re-fetches the wheel(s) that failed or timed out previously
-RUN cd backend && \
-    uv sync || (echo "retry 2"  && uv sync) || (echo "retry 3"  && uv sync) || \
-    (echo "retry 4"  && uv sync) || (echo "retry 5"  && uv sync) || \
-    (echo "retry 6"  && uv sync) || (echo "retry 7"  && uv sync) || \
-    (echo "retry 8"  && uv sync) || (echo "retry 9"  && uv sync) || \
-    (echo "retry 10" && uv sync) || \
-    (echo "ERROR: uv sync failed after 10 attempts" && exit 1)
+# uv sync with BuildKit cache mount (matches DeerFlow's official Dockerfile pattern):
+# - --mount=type=cache persists uv's wheel cache across retries within the same RUN,
+#   so each retry only re-fetches the wheel(s) that failed previously
+# - --no-install-package skips heavy markitdown[all] extras not needed for web research:
+#   speechrecognition (audio), magika+onnxruntime (file detection), pdfminer-six (PDF)
+#   — saves ~65MB of downloads on a flaky HF Spaces build network
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    cd backend && \
+    ( uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six \
+      || (echo "retry 2"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 3"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 4"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 5"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 6"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 7"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 8"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 9"  && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "retry 10" && uv sync --no-install-package onnxruntime --no-install-package magika --no-install-package speechrecognition --no-install-package pdfminer-six) \
+      || (echo "ERROR: uv sync failed after 10 attempts" && exit 1) )
 
 # ── Stage 4: Runtime ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
