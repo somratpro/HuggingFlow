@@ -186,11 +186,7 @@ function renderDashboard({ backendUp, frontendUp, uptimeHuman, sync, keepalive }
     ${appOnline ? "Open DeerFlow Workspace →" : "DeerFlow is starting…"}
   </a>
   <section class="grid">${tiles}</section>
-  <footer>
-    Powered by <a href="https://github.com/bytedance/deer-flow" target="_blank" rel="noopener noreferrer">DeerFlow</a>
-    · <a href="https://github.com/somratpro/HuggingFlow" target="_blank" rel="noopener noreferrer">HuggingFlow</a>
-    · Auto-refreshes every 30s
-  </footer>
+  <footer>Built by <a href="https://github.com/somratpro" target="_blank" rel="noopener noreferrer">@somratpro</a></footer>
 </main>
 <script>
   document.querySelectorAll('.local-time').forEach(el => {
