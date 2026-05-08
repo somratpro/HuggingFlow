@@ -362,7 +362,7 @@ echo "Starting DeerFlow backend on port $BACKEND_PORT..."
     uvicorn app.gateway.app:app \
       --host 127.0.0.1 \
       --port "$BACKEND_PORT" \
-      --workers 2 \
+      --workers 1 \
     2>&1 | tee -a "$DATA_DIR/logs/backend.log"
 ) &
 BACKEND_PID=$!
