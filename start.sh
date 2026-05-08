@@ -53,11 +53,29 @@ mkdir -p \
   "$DATA_DIR/uploads" \
   "$DATA_DIR/workspace" \
   "$DATA_DIR/logs" \
+  "$DATA_DIR/.secrets" \
   /tmp/nginx-tmp/client \
   /tmp/nginx-tmp/proxy \
   /tmp/nginx-tmp/fastcgi \
   /tmp/nginx-tmp/uwsgi \
   /tmp/nginx-tmp/scgi
+chmod 700 "$DATA_DIR/.secrets"
+
+# ── AUTH_JWT_SECRET (generate once, persist across restarts) ──────
+# Priority: env var (HF Space secret) > saved file > auto-generate
+AUTH_JWT_SECRET_FILE="$DATA_DIR/.secrets/auth-jwt-secret"
+if [ -z "${AUTH_JWT_SECRET:-}" ]; then
+  if [ -f "$AUTH_JWT_SECRET_FILE" ]; then
+    AUTH_JWT_SECRET=$(cat "$AUTH_JWT_SECRET_FILE")
+    echo "AUTH_JWT_SECRET loaded from disk."
+  else
+    AUTH_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+    printf '%s' "$AUTH_JWT_SECRET" > "$AUTH_JWT_SECRET_FILE"
+    chmod 600 "$AUTH_JWT_SECRET_FILE"
+    echo "AUTH_JWT_SECRET generated and saved to disk."
+  fi
+fi
+export AUTH_JWT_SECRET
 
 # ── Cloudflare outbound proxy setup ──────────────────────────────
 if [ -n "${CLOUDFLARE_WORKERS_TOKEN:-}" ] || [ -n "${CLOUDFLARE_PROXY_URL:-}" ]; then

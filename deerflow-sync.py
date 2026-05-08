@@ -40,6 +40,7 @@ SYNC_STATUS_FILE  = "/tmp/huggingflow-sync-status.json"
 BACKUP_TARGETS = [
     DATA_DIR / "deerflow.db",
     DATA_DIR / "workspace",
+    DATA_DIR / ".secrets",   # persists AUTH_JWT_SECRET across restarts
     CONFIG_PATH,
 ]
 
