@@ -276,6 +276,10 @@ base["database"].setdefault("url", f"sqlite+aiosqlite:///{db_path}")
 base.setdefault("skills", {})
 base["skills"]["path"] = "/app/skills"
 
+# Enable custom agent management API (allows creating/editing agents in the UI)
+base.setdefault("agents_api", {})
+base["agents_api"]["enabled"] = True
+
 # CORS: allow HF Space URL + localhost
 space_host = os.environ.get("SPACE_HOST", "")
 cors_origins = ["http://localhost:3000", "http://localhost:7860"]
