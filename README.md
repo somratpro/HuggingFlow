@@ -1,3 +1,13 @@
+---
+title: HuggingFlow
+emoji: 🦌
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🦌 HuggingDeer
 
 **DeerFlow** research agent running as a self-hosted [Hugging Face Space](https://huggingface.co/spaces) (Docker).
