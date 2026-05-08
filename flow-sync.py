@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HuggingDeer state sync — backup/restore DeerFlow runtime data to/from HF Dataset.
+HuggingFlow state sync — backup/restore DeerFlow runtime data to/from HF Dataset.
 
 Syncs:
   - deerflow.db      (SQLite thread/session database)
@@ -8,9 +8,9 @@ Syncs:
   - workspace/       (agent-created files in the sandbox workspace)
 
 Usage:
-  deer-sync.py restore    — restore from HF Dataset on startup
-  deer-sync.py sync-once  — push current state to HF Dataset
-  deer-sync.py loop       — sync-once on an interval (reads SYNC_INTERVAL env)
+  flow-sync.py restore    — restore from HF Dataset on startup
+  flow-sync.py sync-once  — push current state to HF Dataset
+  flow-sync.py loop       — sync-once on an interval (reads SYNC_INTERVAL env)
 """
 
 import os
@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
 HF_TOKEN          = os.environ.get("HF_TOKEN", "")
-BACKUP_REPO       = os.environ.get("BACKUP_DATASET_NAME", "huggingdeer-backup")
+BACKUP_REPO       = os.environ.get("BACKUP_DATASET_NAME", "huggingflow-backup")
 HF_USERNAME       = os.environ.get("HF_USERNAME", "")
 DATA_DIR          = Path(os.environ.get("DEER_FLOW_HOME", "/app/data"))
 CONFIG_PATH       = Path(os.environ.get("DEER_FLOW_CONFIG_PATH", DATA_DIR / "config.yaml"))

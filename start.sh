@@ -3,7 +3,7 @@ set -euo pipefail
 umask 0077
 
 # ════════════════════════════════════════════════════════════════
-# HuggingDeer — DeerFlow on Hugging Face Spaces
+# HuggingFlow — DeerFlow on Hugging Face Spaces
 # ════════════════════════════════════════════════════════════════
 
 APP_DIR="/app"
@@ -24,7 +24,7 @@ export DEER_FLOW_SKILLS_PATH="/app/skills"
 
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
-echo "  ║        🦌 HuggingDeer — DeerFlow         ║"
+echo "  ║        🦌 HuggingFlow — DeerFlow         ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
 
@@ -152,7 +152,7 @@ export JINA_API_KEY="${JINA_API_KEY:-}"
 # ── Restore from HF Dataset (if configured) ───────────────────────
 if [ -n "${HF_TOKEN:-}" ]; then
   echo "Restoring state from HF Dataset..."
-  python3 "$APP_DIR/deer-sync.py" restore || echo "Warning: restore failed, starting fresh."
+  python3 "$APP_DIR/flow-sync.py" restore || echo "Warning: restore failed, starting fresh."
 else
   echo "HF_TOKEN not set — running without dataset persistence."
 fi
@@ -295,7 +295,7 @@ else
   echo "Search    : DuckDuckGo (no API key)"
 fi
 if [ -n "${HF_TOKEN:-}" ]; then
-  echo "Backup    : ${BACKUP_DATASET_NAME:-huggingdeer-backup} (every ${SYNC_INTERVAL}s)"
+  echo "Backup    : ${BACKUP_DATASET_NAME:-huggingflow-backup} (every ${SYNC_INTERVAL}s)"
 else
   echo "Backup    : disabled"
 fi
@@ -306,10 +306,10 @@ echo ""
 
 # ── Graceful shutdown ─────────────────────────────────────────────
 graceful_shutdown() {
-  echo "Shutting down HuggingDeer..."
+  echo "Shutting down HuggingFlow..."
   if [ -n "${HF_TOKEN:-}" ]; then
     echo "Saving state to HF Dataset..."
-    python3 "$APP_DIR/deer-sync.py" sync-once || echo "Warning: shutdown sync failed."
+    python3 "$APP_DIR/flow-sync.py" sync-once || echo "Warning: shutdown sync failed."
   fi
   # Stop nginx daemon (nginx -s quit = graceful drain)
   nginx -s quit 2>/dev/null || true
@@ -400,7 +400,7 @@ if [ "$ready" != "true" ]; then
 fi
 echo "Frontend ready."
 echo ""
-echo "HuggingDeer is up ✓  →  http://localhost:$PUBLIC_PORT"
+echo "HuggingFlow is up ✓  →  http://localhost:$PUBLIC_PORT"
 echo ""
 
 # ── Periodic HF Dataset sync ──────────────────────────────────────
@@ -408,7 +408,7 @@ if [ -n "${HF_TOKEN:-}" ]; then
   (
     while true; do
       sleep "$SYNC_INTERVAL"
-      python3 "$APP_DIR/deer-sync.py" sync-once 2>/dev/null || true
+      python3 "$APP_DIR/flow-sync.py" sync-once 2>/dev/null || true
     done
   ) &
 fi

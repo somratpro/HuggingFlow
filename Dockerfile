@@ -1,5 +1,5 @@
 # ════════════════════════════════════════════════════════════════
-# HuggingDeer — DeerFlow Research Agent for Hugging Face Spaces
+# HuggingFlow — DeerFlow Research Agent for Hugging Face Spaces
 # ════════════════════════════════════════════════════════════════
 #
 # Single-container deployment of DeerFlow (frontend + backend + nginx)
@@ -104,12 +104,12 @@ COPY --from=source --chown=1000:1000 /src/config.example.yaml /app/config.exampl
 # Frontend: built .next + node_modules (pnpm hard links — self-contained after COPY)
 COPY --from=frontend-builder --chown=1000:1000 /app/frontend /app/frontend
 
-# ── Copy HuggingDeer runtime scripts ─────────────────────────────
-COPY --chown=1000:1000 nginx.conf /etc/nginx/nginx.conf
-COPY --chown=1000:1000 start.sh   /app/start.sh
-COPY --chown=1000:1000 deer-sync.py /app/deer-sync.py
+# ── Copy HuggingFlow runtime scripts ─────────────────────────────
+COPY --chown=1000:1000 nginx.conf  /etc/nginx/nginx.conf
+COPY --chown=1000:1000 start.sh    /app/start.sh
+COPY --chown=1000:1000 flow-sync.py /app/flow-sync.py
 
-RUN chmod +x /app/start.sh /app/deer-sync.py
+RUN chmod +x /app/start.sh /app/flow-sync.py
 
 USER user
 WORKDIR /app

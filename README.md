@@ -8,7 +8,7 @@ app_port: 7860
 pinned: false
 ---
 
-# 🦌 HuggingDeer
+# 🦌 HuggingFlow
 
 **DeerFlow** research agent running as a self-hosted [Hugging Face Space](https://huggingface.co/spaces) (Docker).
 
@@ -27,7 +27,7 @@ Set these in **Settings → Variables and Secrets** on your HF Space:
 | `JINA_API_KEY` | optional | Better web page fetching |
 | `AUTH_JWT_SECRET` | optional | JWT signing secret — auto-generated if not set (sessions reset on restart) |
 | `HF_TOKEN` | optional | Your HF token — enables dataset backup/restore of threads |
-| `BACKUP_DATASET_NAME` | optional | HF dataset repo for backup (default: `huggingdeer-backup`) |
+| `BACKUP_DATASET_NAME` | optional | HF dataset repo for backup (default: `huggingflow-backup`) |
 
 ## LLM_MODEL format
 
