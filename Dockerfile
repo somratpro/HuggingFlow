@@ -96,6 +96,7 @@ COPY --from=source --chown=1000:1000 /src/config.example.yaml /app/config.exampl
 
 # ── Copy HuggingFlow runtime scripts ─────────────────────────────
 COPY --chown=1000:1000 nginx.conf                    /etc/nginx/nginx.conf
+COPY --chown=1000:1000 dashboard.html                /app/dashboard.html
 COPY --chown=1000:1000 start.sh                      /app/start.sh
 COPY --chown=1000:1000 deerflow-sync.py              /app/deerflow-sync.py
 COPY --chown=1000:1000 health-server.js              /app/health-server.js
