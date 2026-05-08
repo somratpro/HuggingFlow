@@ -47,7 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
-ENV UV_HTTP_TIMEOUT=300
+ENV UV_HTTP_TIMEOUT=300 \
+    UV_CONCURRENT_DOWNLOADS=4
 
 WORKDIR /app
 COPY --from=source /src/backend ./backend
@@ -70,12 +71,11 @@ PY
 # Drop lockfile so resolver picks up the patched dependency
 RUN rm -f /app/backend/uv.lock
 
-# uv sync: limit to 4 concurrent downloads (HF Spaces network drops parallel connections);
-# retry up to 3x — uv caches completed downloads so retries only re-fetch the failed wheel
+# uv sync: retry up to 3x — uv caches completed downloads so retries only re-fetch the failed wheel
 RUN cd backend && \
-    uv sync --concurrent-downloads 4 || \
-    (echo "uv sync attempt 2..." && uv sync --concurrent-downloads 2) || \
-    (echo "uv sync attempt 3..." && uv sync --concurrent-downloads 1)
+    uv --concurrent-downloads 4 sync || \
+    (echo "uv sync attempt 2..." && uv --concurrent-downloads 2 sync) || \
+    (echo "uv sync attempt 3..." && uv --concurrent-downloads 1 sync)
 
 # ── Stage 4: Runtime ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
