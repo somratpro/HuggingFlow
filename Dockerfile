@@ -72,10 +72,11 @@ PY
 RUN rm -f /app/backend/uv.lock
 
 # uv sync: retry up to 3x — uv caches completed downloads so retries only re-fetch the failed wheel
+# UV_CONCURRENT_DOWNLOADS=4 already set above to limit parallel connections on HF Spaces network
 RUN cd backend && \
-    uv --concurrent-downloads 4 sync || \
-    (echo "uv sync attempt 2..." && uv --concurrent-downloads 2 sync) || \
-    (echo "uv sync attempt 3..." && uv --concurrent-downloads 1 sync)
+    uv sync || \
+    (echo "uv sync attempt 2..." && uv sync) || \
+    (echo "uv sync attempt 3..." && uv sync)
 
 # ── Stage 4: Runtime ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
