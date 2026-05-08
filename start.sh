@@ -390,11 +390,21 @@ if [ "$ready" != "true" ]; then
 fi
 echo "Backend ready."
 
+# ── Build DEER_FLOW_TRUSTED_ORIGINS ───────────────────────────────
+# Required in production mode by the pre-built frontend image (af6e48cc):
+# gateway-config.ts has NO defaults in prod — both vars must be explicit
+# or zod schema fails → config_error → "Application error" on every page.
+TRUSTED_ORIGINS="http://localhost:3000,http://localhost:7860"
+if [ -n "${SPACE_HOST:-}" ]; then
+  TRUSTED_ORIGINS="$TRUSTED_ORIGINS,https://$SPACE_HOST"
+fi
+
 # ── Start frontend (Next.js) ──────────────────────────────────────
 echo "Starting Next.js frontend on port $FRONTEND_PORT..."
 (
   cd "$APP_DIR/frontend" && \
   DEER_FLOW_INTERNAL_GATEWAY_BASE_URL="http://127.0.0.1:$BACKEND_PORT" \
+  DEER_FLOW_TRUSTED_ORIGINS="$TRUSTED_ORIGINS" \
   PORT="$FRONTEND_PORT" \
   NODE_OPTIONS="--require $APP_DIR/cloudflare-proxy.js" \
   node_modules/.bin/next start -p "$FRONTEND_PORT" \
