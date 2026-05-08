@@ -397,7 +397,7 @@ echo "Starting Next.js frontend on port $FRONTEND_PORT..."
   DEER_FLOW_INTERNAL_GATEWAY_BASE_URL="http://127.0.0.1:$BACKEND_PORT" \
   PORT="$FRONTEND_PORT" \
   NODE_OPTIONS="--require $APP_DIR/cloudflare-proxy.js" \
-  node node_modules/.bin/next start -p "$FRONTEND_PORT" \
+  node_modules/.bin/next start -p "$FRONTEND_PORT" \
     2>&1 | tee -a "$DATA_DIR/logs/frontend.log"
 ) &
 FRONTEND_PID=$!
