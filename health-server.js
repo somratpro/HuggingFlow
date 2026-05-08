@@ -240,7 +240,7 @@ const server = http.createServer(async (req, res) => {
   // Dashboard — HTML status page (served at / and /dashboard)
   if (pathname === "/" || pathname === "/dashboard") {
     const [backendUp, frontendUp] = await Promise.all([
-      probe(NGINX_HOST, NGINX_PORT, "/api/health"),
+      probe(NGINX_HOST, NGINX_PORT, "/health"),
       probe(NGINX_HOST, NGINX_PORT, "/workspace"),
     ]);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
