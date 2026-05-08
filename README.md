@@ -6,6 +6,20 @@ colorTo: blue
 sdk: docker
 app_port: 7860
 pinned: false
+license: mit
+secrets:
+  - name: LLM_MODEL
+    description: "Model in provider/model-name format — e.g. openai/gpt-4o, anthropic/claude-sonnet-4-5, google/gemini-2.5-flash"
+  - name: LLM_API_KEY
+    description: API key for the chosen LLM provider.
+  - name: HF_TOKEN
+    description: Hugging Face token (write access) — enables thread backup/restore to a private HF Dataset.
+  - name: SERPER_API_KEY
+    description: "Serper API key for real Google Search results (recommended). Free tier: 2,500 queries/month."
+  - name: AUTH_JWT_SECRET
+    description: "JWT signing secret — keeps sessions alive across restarts. Generate: openssl rand -base64 32"
+  - name: CLOUDFLARE_WORKERS_TOKEN
+    description: "Cloudflare API token — auto-creates an outbound proxy Worker and a keep-awake cron Worker."
 ---
 
 <div align="center">
@@ -74,27 +88,33 @@ DeerFlow conducts multi-step research: it queries search engines, fetches web pa
 
 ## Quick Start
 
-### Deploy on Hugging Face Spaces
+### Step 1 — Duplicate this Space
 
-1. **Duplicate this Space**
+[![Duplicate this Space](https://huggingface.co/datasets/huggingface/badges/resolve/main/duplicate-this-space-xl.svg)](https://huggingface.co/spaces/somratpro/HuggingFlow?duplicate=true)
 
-   Go to [somratpro/HuggingFlow](https://huggingface.co/spaces/somratpro/HuggingFlow) → **⋯ → Duplicate Space**
+### Step 2 — Add required secrets
 
-2. **Add required secrets**
+In your new Space → **Settings → Variables and Secrets**, add at minimum:
 
-   Settings → **Variables and Secrets** → add `LLM_MODEL` and `LLM_API_KEY` (see [below](#required-secrets))
+| Secret | Description |
+|--------|-------------|
+| `LLM_MODEL` | Model in `provider/model-name` format — e.g. `openai/gpt-4o` |
+| `LLM_API_KEY` | API key for the chosen provider |
 
-3. **Wait for build**
+> [!TIP]
+> Add `HF_TOKEN` (a token with write access to your account) to enable thread backup persistence. Without it, all research threads are lost on restart.
 
-   First build pulls pre-built images — takes ~5 minutes. Subsequent restarts are instant.
+### Step 3 — Wait for build
 
-4. **Create your admin account**
+First build pulls pre-built GHCR images — takes ~5 minutes. Subsequent restarts are instant (no rebuild).
 
-   Visit `https://<your-space>.hf.space/setup` → create username + password
+### Step 4 — Create your admin account
 
-5. **Start researching**
+Visit `https://<your-space>.hf.space/setup` → create username + password.
 
-   Open `/workspace` — you're live 🎉
+### Step 5 — Start researching
+
+Open `/workspace` — you're live 🎉
 
 ---
 
@@ -300,17 +320,36 @@ Open `http://localhost:7860` for the dashboard, `http://localhost:7860/setup` to
 
 ## More Projects
 
-| Project | Description |
-|---------|-------------|
-| [HuggingFlow](https://github.com/somratpro/HuggingFlow) | This project — DeerFlow on HF Spaces |
-| [HuggingClip](https://github.com/somratpro/HuggingClip) | Open-source Clipper running on HF Spaces |
-| [DeerFlow](https://github.com/bytedance/deer-flow) | Upstream deep-research agent by ByteDance |
+Similar projects by [@somratpro](https://github.com/somratpro) — all free, one-click deploy on HF Spaces:
+
+| Project | What it runs | HF Space | GitHub |
+|---------|-------------|----------|--------|
+| **HuggingClip** | Paperclip — AI agent orchestration | [Space](https://huggingface.co/spaces/somratpro/HuggingClip) | [Repo](https://github.com/somratpro/HuggingClip) |
+| **HuggingClaw** | OpenClaw — Claude Code in the browser | [Space](https://huggingface.co/spaces/somratpro/HuggingClaw) | [Repo](https://github.com/somratpro/HuggingClaw) |
+| **HuggingMes** | Hermes — self-hosted agent gateway | [Space](https://huggingface.co/spaces/somratpro/HuggingMes) | [Repo](https://github.com/somratpro/HuggingMes) |
+| **Hugging8n** | n8n — workflow & automation platform | [Space](https://huggingface.co/spaces/somratpro/Hugging8n) | [Repo](https://github.com/somratpro/Hugging8n) |
+| **HuggingPost** | Postiz — social media scheduler | [Space](https://huggingface.co/spaces/somratpro/HuggingPost) | [Repo](https://github.com/somratpro/HuggingPost) |
+
+---
+
+## ❤️ Support
+
+If HuggingFlow saves you time, consider buying me a coffee to keep the projects alive!
+
+**USDT (TRC-20 / TRON network only)**
+
+```
+TELx8TJz1W1h7n6SgpgGNNGZXpJCEUZrdB
+```
+
+> [!WARNING]
+> Send **USDT on TRC-20 network only**. Sending other tokens or using a different network will result in permanent loss.
 
 ---
 
 ## Contributing
 
-Issues and PRs welcome. Please open an issue first for large changes.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```
 Fork → branch → commit → PR
