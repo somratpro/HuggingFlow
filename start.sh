@@ -17,12 +17,16 @@ SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
 BACKEND_READY_TIMEOUT="${BACKEND_READY_TIMEOUT:-120}"
 FRONTEND_READY_TIMEOUT="${FRONTEND_READY_TIMEOUT:-120}"
 
+# Apply defaults before exporting so downstream tools never see empty strings
+export BACKUP_DATASET_NAME="${BACKUP_DATASET_NAME:-huggingflow-backup}"
+export SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
+
 # Export shell vars so inline Python scripts can read them via os.environ
-export DATA_DIR CONFIG_PATH BACKUP_DATASET_NAME SYNC_INTERVAL
+export DATA_DIR CONFIG_PATH
 export DEER_FLOW_HOME="$DATA_DIR"
 export DEER_FLOW_CONFIG_PATH="$CONFIG_PATH"
 export DEER_FLOW_SKILLS_PATH="/app/skills"
-export NGINX_PORT PUBLIC_PORT
+export NGINX_PORT PUBLIC_PORT FRONTEND_PORT BACKEND_PORT
 
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
@@ -69,7 +73,8 @@ if [ -z "${AUTH_JWT_SECRET:-}" ]; then
     AUTH_JWT_SECRET=$(cat "$AUTH_JWT_SECRET_FILE")
     echo "AUTH_JWT_SECRET loaded from disk."
   else
-    AUTH_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+    AUTH_JWT_SECRET=$(openssl rand -base64 48 2>/dev/null | tr -d '\n' || \
+                   python3 -c "import secrets; print(secrets.token_urlsafe(64))")
     printf '%s' "$AUTH_JWT_SECRET" > "$AUTH_JWT_SECRET_FILE"
     chmod 600 "$AUTH_JWT_SECRET_FILE"
     echo "AUTH_JWT_SECRET generated and saved to disk."
@@ -298,15 +303,6 @@ base["skills"]["path"] = "/app/skills"
 base.setdefault("agents_api", {})
 base["agents_api"]["enabled"] = True
 
-# CORS: allow HF Space URL + localhost
-space_host = os.environ.get("SPACE_HOST", "")
-cors_origins = ["http://localhost:3000", "http://localhost:7860"]
-if space_host:
-    cors_origins.append(f"https://{space_host}")
-
-# Set via env (picked up by gateway config loader)
-os.environ["CORS_ORIGINS"] = ",".join(cors_origins)
-
 config_path.parent.mkdir(parents=True, exist_ok=True)
 config_path.write_text(yaml.safe_dump(base, sort_keys=False, allow_unicode=True))
 config_path.chmod(0o600)
@@ -353,14 +349,20 @@ graceful_shutdown() {
     echo "Saving state to HF Dataset..."
     python3 "$APP_DIR/deerflow-sync.py" sync-once || echo "Warning: shutdown sync failed."
   fi
-  # Stop nginx daemon (nginx -s quit = graceful drain)
   nginx -s quit 2>/dev/null || true
-  # Stop background shell jobs (health-server, backend, frontend, sync loop)
-  kill $(jobs -p) 2>/dev/null || true
-  sleep 2
+  # Kill tracked PIDs explicitly — more reliable than $(jobs -p) in bash
+  for pid in "${FRONTEND_PID:-}" "${HEALTH_PID:-}" "${BACKEND_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+  sleep 3
   exit 0
 }
 trap graceful_shutdown SIGTERM SIGINT
+
+# ── Truncate logs on startup (prevent unbounded growth) ──────────
+for _log in health-server backend frontend; do
+  : > "$DATA_DIR/logs/$_log.log" 2>/dev/null || true
+done
 
 # ── Start health-server (public port 7860) ────────────────────────
 echo "Starting health-server on port $PUBLIC_PORT..."

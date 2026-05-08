@@ -47,7 +47,7 @@ ARG NODE_MAJOR=22
 
 # Layer 1: nginx + base tools (rarely changes — stays cached)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates gnupg nginx jq \
+    curl ca-certificates gnupg nginx openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: Node.js (separate layer — apt network stall doesn't force pip re-run)
@@ -114,8 +114,8 @@ WORKDIR /app
 
 EXPOSE 7860
 
-# 60s start period — no compilation, just config generation + service startup
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+# 120s start period — restore + backend + frontend startup can take up to 2 min
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s \
     CMD curl -fsS http://localhost:7860/health || exit 1
 
 CMD ["/app/start.sh"]

@@ -95,6 +95,7 @@ function renderDashboard({ backendUp, frontendUp, uptimeHuman, sync, keepalive }
   const appOnline   = backendUp && frontendUp;
   const syncStatus  = String(sync?.status || "unknown");
   const syncTone    = ["success","restored","synced","configured"].includes(syncStatus) ? "ok"
+                    : syncStatus === "error"    ? "off"
                     : syncStatus === "disabled" ? "warn" : "neutral";
   const kaOk        = keepalive?.configured === true;
   const kaTone      = kaOk ? "ok" : process.env.CLOUDFLARE_WORKERS_TOKEN ? "warn" : "neutral";
@@ -255,7 +256,7 @@ const server = http.createServer(async (req, res) => {
       probe(NGINX_HOST, NGINX_PORT, "/health"),
       tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     return res.end(renderDashboard({
       backendUp, frontendUp,
       uptimeHuman: formatUptime(Date.now() - startTime),
