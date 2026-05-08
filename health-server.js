@@ -136,9 +136,9 @@ function renderDashboard({ backendUp, frontendUp, uptimeHuman, sync, keepalive }
   return `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta http-equiv="refresh" content="30"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="refresh" content="30" />
   <title>HuggingFlow Dashboard</title>
   <style>
     :root{color-scheme:dark;--bg:#080c10;--panel:#0e1218;--line:#1e2530;--text:#eef2f7;--muted:#6b7a8d;--soft:#a8b5c4;--good:#22c55e;--warn:#f59e0b;--bad:#f43f5e;--accent:#3b82f6}
@@ -199,7 +199,7 @@ function renderDashboard({ backendUp, frontendUp, uptimeHuman, sync, keepalive }
   });
 </script>
 </body>
-</html>`.replace(/\$\{appOnline\}/g, appOnline ? "true" : "false");  // avoid template literal collision
+</html>`;
 }
 
 // ── Request handler ────────────────────────────────────────────────────────

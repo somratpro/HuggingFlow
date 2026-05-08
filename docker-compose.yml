@@ -1,0 +1,71 @@
+version: '3.8'
+
+# HuggingFlow — local development
+# Usage:
+#   cp .env.example .env        # fill in LLM_MODEL, LLM_API_KEY, etc.
+#   docker-compose up --build
+
+services:
+  huggingflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: huggingflow
+    environment:
+      # ── Required ────────────────────────────────────────────────
+      LLM_MODEL:   ${LLM_MODEL:-openai/gpt-4o}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+
+      # ── Search (optional) ────────────────────────────────────────
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      JINA_API_KEY:   ${JINA_API_KEY:-}
+
+      # ── Auth ─────────────────────────────────────────────────────
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-secret-change-in-production}
+
+      # ── HF Dataset backup (optional) ─────────────────────────────
+      HF_TOKEN:            ${HF_TOKEN:-}
+      HF_USERNAME:         ${HF_USERNAME:-}
+      BACKUP_DATASET_NAME: ${BACKUP_DATASET_NAME:-huggingflow-backup}
+      SYNC_INTERVAL:       ${SYNC_INTERVAL:-600}
+
+      # ── Custom LLM endpoint (optional) ───────────────────────────
+      CUSTOM_BASE_URL: ${CUSTOM_BASE_URL:-}
+
+      # ── Cloudflare (optional) ─────────────────────────────────────
+      CLOUDFLARE_WORKERS_TOKEN: ${CLOUDFLARE_WORKERS_TOKEN:-}
+      CLOUDFLARE_PROXY_URL:     ${CLOUDFLARE_PROXY_URL:-}
+
+      # ── Timeouts ─────────────────────────────────────────────────
+      BACKEND_READY_TIMEOUT:  ${BACKEND_READY_TIMEOUT:-120}
+      FRONTEND_READY_TIMEOUT: ${FRONTEND_READY_TIMEOUT:-120}
+
+      # ── Privacy ──────────────────────────────────────────────────
+      DO_NOT_TRACK: "1"
+
+    ports:
+      - "7860:7860"    # Public: status dashboard + reverse proxy
+
+    volumes:
+      # Persist data between docker-compose up/down cycles
+      - huggingflow_data:/app/data
+
+      # Hot-reload orchestration scripts (no rebuild needed)
+      - ./start.sh:/app/start.sh
+      - ./health-server.js:/app/health-server.js
+      - ./deerflow-sync.py:/app/deerflow-sync.py
+      - ./nginx.conf:/etc/nginx/nginx.conf
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+    restart: unless-stopped
+
+volumes:
+  huggingflow_data:
+    driver: local

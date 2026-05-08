@@ -167,6 +167,7 @@ Serper is strongly recommended for research quality. Sign up at [serper.dev](htt
 HF Spaces shares IPs that some APIs block. The Cloudflare outbound proxy routes backend HTTP requests through a Cloudflare Worker, giving you a clean egress IP.
 
 **Setup:**
+
 1. Get a Cloudflare API token with **Workers Edit** permission
 2. Set `CLOUDFLARE_WORKERS_TOKEN` in your Space secrets
 3. On next start, `cloudflare-proxy-setup.py` auto-creates the Worker and sets `CLOUDFLARE_PROXY_URL`
@@ -236,6 +237,7 @@ nginx
 | 3000 | Next.js frontend | internal only |
 
 **Images used:**
+
 - `ghcr.io/bytedance/deer-flow-backend:latest` — pre-built Python backend + `.venv`
 - `ghcr.io/bytedance/deer-flow-frontend:latest` — pre-built Next.js + `node_modules`
 - No source compilation — build time ~5 min instead of 30+ min
