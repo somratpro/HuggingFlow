@@ -5,9 +5,10 @@ const http = require("http");
 const net  = require("net");
 const fs   = require("fs");
 
-const PUBLIC_PORT  = parseInt(process.env.PORT || "7860", 10);
-const NGINX_PORT   = parseInt(process.env.NGINX_PORT || "7861", 10);
-const NGINX_HOST   = "127.0.0.1";
+const PUBLIC_PORT    = parseInt(process.env.PORT || "7860", 10);
+const NGINX_PORT     = parseInt(process.env.NGINX_PORT || "7861", 10);
+const NGINX_HOST     = "127.0.0.1";
+const FRONTEND_PORT  = parseInt(process.env.FRONTEND_PORT || "3000", 10);
 const startTime    = Date.now();
 
 // ── Env-derived display values ─────────────────────────────────────────────
@@ -62,6 +63,17 @@ function probe(host, port, path, timeout = 1500) {
     });
     req.on("timeout", () => { req.destroy(); resolve(false); });
     req.on("error",   () => resolve(false));
+  });
+}
+
+// TCP-only liveness check — confirms port is open without triggering any HTTP/SSR.
+// Used for the Next.js frontend probe so we don't hit auth rate-limited endpoints.
+function tcpProbe(host, port, timeout = 1500) {
+  return new Promise(resolve => {
+    const sock = net.connect({ host, port }, () => { sock.destroy(); resolve(true); });
+    sock.setTimeout(timeout);
+    sock.on("timeout", () => { sock.destroy(); resolve(false); });
+    sock.on("error",   () => resolve(false));
   });
 }
 
@@ -207,7 +219,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/health") {
     const [backendUp, frontendUp] = await Promise.all([
       probe(NGINX_HOST, NGINX_PORT, "/health"),
-      probe(NGINX_HOST, NGINX_PORT, "/"),
+      tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     const ok = backendUp && frontendUp;
     res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json" });
@@ -224,7 +236,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/status") {
     const [backendUp, frontendUp] = await Promise.all([
       probe(NGINX_HOST, NGINX_PORT, "/health"),
-      probe(NGINX_HOST, NGINX_PORT, "/"),
+      tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({
@@ -241,7 +253,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/" || pathname === "/dashboard") {
     const [backendUp, frontendUp] = await Promise.all([
       probe(NGINX_HOST, NGINX_PORT, "/health"),
-      probe(NGINX_HOST, NGINX_PORT, "/workspace"),
+      tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(renderDashboard({
