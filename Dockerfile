@@ -47,10 +47,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
-ENV UV_HTTP_TIMEOUT=300
+ENV UV_HTTP_TIMEOUT=300 \
+    UV_CONCURRENT_DOWNLOADS=4
 
 WORKDIR /app
 COPY --from=source /src/backend ./backend
+
+# Strip markitdown[all] heavy extras not useful for web research on HF Spaces:
+# removes speechrecognition (31MB), pdfminer-six (6MB), magika (15MB), onnxruntime (13MB)
+RUN find /app/backend -name "pyproject.toml" -exec \
+    sed -i 's/markitdown\[all\]/markitdown/g' {} \; && \
+    rm -f /app/backend/uv.lock
 
 # uv sync with retry — HF Spaces build network is flaky; uv caches good downloads so retries are fast
 RUN cd backend && \
