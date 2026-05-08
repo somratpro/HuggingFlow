@@ -11,6 +11,7 @@ DATA_DIR="${DEER_FLOW_HOME:-/app/data}"
 CONFIG_PATH="${DEER_FLOW_CONFIG_PATH:-$DATA_DIR/config.yaml}"
 BACKEND_PORT="${BACKEND_PORT:-8001}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+NGINX_PORT="${NGINX_PORT:-7861}"
 PUBLIC_PORT="${PORT:-7860}"
 SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
 BACKEND_READY_TIMEOUT="${BACKEND_READY_TIMEOUT:-120}"
@@ -21,6 +22,7 @@ export DATA_DIR CONFIG_PATH BACKUP_DATASET_NAME SYNC_INTERVAL
 export DEER_FLOW_HOME="$DATA_DIR"
 export DEER_FLOW_CONFIG_PATH="$CONFIG_PATH"
 export DEER_FLOW_SKILLS_PATH="/app/skills"
+export NGINX_PORT PUBLIC_PORT
 
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
@@ -56,6 +58,21 @@ mkdir -p \
   /tmp/nginx-tmp/fastcgi \
   /tmp/nginx-tmp/uwsgi \
   /tmp/nginx-tmp/scgi
+
+# ── Cloudflare outbound proxy setup ──────────────────────────────
+if [ -n "${CLOUDFLARE_WORKERS_TOKEN:-}" ] || [ -n "${CLOUDFLARE_PROXY_URL:-}" ]; then
+  echo "Setting up Cloudflare outbound proxy..."
+  python3 "$APP_DIR/cloudflare-proxy-setup.py" || echo "Warning: CF proxy setup failed, continuing without it."
+fi
+# Source proxy env (sets CLOUDFLARE_PROXY_URL for keepalive + Node.js)
+# shellcheck disable=SC1091
+. /tmp/huggingflow-cloudflare-proxy.env 2>/dev/null || true
+
+# ── Cloudflare keepalive setup ────────────────────────────────────
+if [ -n "${CLOUDFLARE_WORKERS_TOKEN:-}" ] || [ -n "${CLOUDFLARE_PROXY_URL:-}" ]; then
+  echo "Setting up Cloudflare keepalive..."
+  python3 "$APP_DIR/cloudflare-keepalive-setup.py" || echo "Warning: CF keepalive setup failed."
+fi
 
 # ── Provider → env var + langchain class mapping ──────────────────
 # Parse LLM_MODEL in format "provider/model-name" (e.g. "openai/gpt-4o")
@@ -152,7 +169,7 @@ export JINA_API_KEY="${JINA_API_KEY:-}"
 # ── Restore from HF Dataset (if configured) ───────────────────────
 if [ -n "${HF_TOKEN:-}" ]; then
   echo "Restoring state from HF Dataset..."
-  python3 "$APP_DIR/flow-sync.py" restore || echo "Warning: restore failed, starting fresh."
+  python3 "$APP_DIR/deerflow-sync.py" restore || echo "Warning: restore failed, starting fresh."
 else
   echo "HF_TOKEN not set — running without dataset persistence."
 fi
@@ -299,6 +316,9 @@ if [ -n "${HF_TOKEN:-}" ]; then
 else
   echo "Backup    : disabled"
 fi
+if [ -n "${CLOUDFLARE_PROXY_URL:-}" ]; then
+  echo "CF Proxy  : $CLOUDFLARE_PROXY_URL"
+fi
 if [ -n "$SPACE_HOST" ]; then
   echo "URL       : https://$SPACE_HOST"
 fi
@@ -309,20 +329,24 @@ graceful_shutdown() {
   echo "Shutting down HuggingFlow..."
   if [ -n "${HF_TOKEN:-}" ]; then
     echo "Saving state to HF Dataset..."
-    python3 "$APP_DIR/flow-sync.py" sync-once || echo "Warning: shutdown sync failed."
+    python3 "$APP_DIR/deerflow-sync.py" sync-once || echo "Warning: shutdown sync failed."
   fi
   # Stop nginx daemon (nginx -s quit = graceful drain)
   nginx -s quit 2>/dev/null || true
-  # Stop background shell jobs (backend, frontend, sync loop)
+  # Stop background shell jobs (health-server, backend, frontend, sync loop)
   kill $(jobs -p) 2>/dev/null || true
   sleep 2
   exit 0
 }
 trap graceful_shutdown SIGTERM SIGINT
 
-# ── Start nginx ───────────────────────────────────────────────────
-echo "Starting nginx on port $PUBLIC_PORT..."
-# Validate config first
+# ── Start health-server (public port 7860) ────────────────────────
+echo "Starting health-server on port $PUBLIC_PORT..."
+node "$APP_DIR/health-server.js" 2>&1 | tee -a "$DATA_DIR/logs/health-server.log" &
+HEALTH_PID=$!
+
+# ── Start nginx (internal port 7861) ─────────────────────────────
+echo "Starting nginx on port $NGINX_PORT..."
 nginx -t 2>/dev/null && nginx || {
   echo "nginx config error:"
   nginx -t
@@ -372,6 +396,7 @@ echo "Starting Next.js frontend on port $FRONTEND_PORT..."
   cd "$APP_DIR/frontend" && \
   DEER_FLOW_INTERNAL_GATEWAY_BASE_URL="http://127.0.0.1:$BACKEND_PORT" \
   PORT="$FRONTEND_PORT" \
+  NODE_OPTIONS="--require $APP_DIR/cloudflare-proxy.js" \
   node node_modules/.bin/next start -p "$FRONTEND_PORT" \
     2>&1 | tee -a "$DATA_DIR/logs/frontend.log"
 ) &
@@ -408,7 +433,7 @@ if [ -n "${HF_TOKEN:-}" ]; then
   (
     while true; do
       sleep "$SYNC_INTERVAL"
-      python3 "$APP_DIR/flow-sync.py" sync-once 2>/dev/null || true
+      python3 "$APP_DIR/deerflow-sync.py" sync-once 2>/dev/null || true
     done
   ) &
 fi

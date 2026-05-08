@@ -8,18 +8,19 @@ Syncs:
   - workspace/       (agent-created files in the sandbox workspace)
 
 Usage:
-  flow-sync.py restore    — restore from HF Dataset on startup
-  flow-sync.py sync-once  — push current state to HF Dataset
-  flow-sync.py loop       — sync-once on an interval (reads SYNC_INTERVAL env)
+  deerflow-sync.py restore    — restore from HF Dataset on startup
+  deerflow-sync.py sync-once  — push current state to HF Dataset
+  deerflow-sync.py loop       — sync-once on an interval (reads SYNC_INTERVAL env)
 """
 
+import json
 import os
 import sys
 import time
-import shutil
 import tarfile
 import tempfile
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -32,7 +33,8 @@ DATA_DIR          = Path(os.environ.get("DEER_FLOW_HOME", "/app/data"))
 CONFIG_PATH       = Path(os.environ.get("DEER_FLOW_CONFIG_PATH", DATA_DIR / "config.yaml"))
 SYNC_INTERVAL     = int(os.environ.get("SYNC_INTERVAL", "600"))
 
-ARCHIVE_NAME = "deerflow-state.tar.gz"
+ARCHIVE_NAME      = "deerflow-state.tar.gz"
+SYNC_STATUS_FILE  = "/tmp/huggingflow-sync-status.json"
 
 # Files/dirs to include in the backup archive
 BACKUP_TARGETS = [
@@ -42,8 +44,19 @@ BACKUP_TARGETS = [
 ]
 
 
+def _write_status(status: str, message: str):
+    try:
+        payload = {
+            "status": status,
+            "message": message,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        Path(SYNC_STATUS_FILE).write_text(json.dumps(payload))
+    except Exception as exc:
+        log.debug("Could not write sync status: %s", exc)
+
+
 def _get_api():
-    """Return authenticated HfApi or raise."""
     if not HF_TOKEN:
         raise RuntimeError("HF_TOKEN not set")
     from huggingface_hub import HfApi
@@ -51,18 +64,15 @@ def _get_api():
 
 
 def _resolve_repo_id(api) -> str:
-    """Resolve BACKUP_REPO to a full repo_id (username/repo-name)."""
     if "/" in BACKUP_REPO:
         return BACKUP_REPO
     if HF_USERNAME:
         return f"{HF_USERNAME}/{BACKUP_REPO}"
-    # Auto-detect from token
     user = api.whoami()
     return f"{user['name']}/{BACKUP_REPO}"
 
 
 def _ensure_repo(api, repo_id: str):
-    """Create the dataset repo if it doesn't exist."""
     from huggingface_hub import create_repo
     try:
         create_repo(
@@ -77,7 +87,6 @@ def _ensure_repo(api, repo_id: str):
 
 
 def _make_archive(dest: Path):
-    """Pack BACKUP_TARGETS into a .tar.gz archive."""
     with tarfile.open(dest, "w:gz") as tar:
         for target in BACKUP_TARGETS:
             if target.exists():
@@ -87,7 +96,6 @@ def _make_archive(dest: Path):
 
 
 def _extract_archive(src: Path):
-    """Unpack archive into DATA_DIR.parent (restores original paths)."""
     extract_root = DATA_DIR.parent
     with tarfile.open(src, "r:gz") as tar:
         for member in tar.getmembers():
@@ -96,7 +104,6 @@ def _extract_archive(src: Path):
 
 
 def restore():
-    """Download and unpack the latest state archive from HF Dataset."""
     if not HF_TOKEN:
         log.info("No HF_TOKEN — skipping restore.")
         return
@@ -118,18 +125,20 @@ def restore():
                 )
                 _extract_archive(Path(local))
                 log.info("State restored from %s", repo_id)
+                _write_status("restored", f"State restored from {repo_id}")
             except Exception as exc:
                 if "404" in str(exc) or "not found" in str(exc).lower() or "does not exist" in str(exc).lower():
                     log.info("No existing backup found in %s — starting fresh.", repo_id)
+                    _write_status("configured", f"No backup yet in {repo_id}. First sync in {SYNC_INTERVAL}s.")
                 else:
                     raise
     except Exception as exc:
         log.warning("Restore failed: %s", exc)
+        _write_status("error", f"Restore failed: {exc}")
         raise
 
 
 def sync_once():
-    """Pack current state and upload to HF Dataset."""
     if not HF_TOKEN:
         return
 
@@ -144,6 +153,7 @@ def sync_once():
 
             if not archive.exists() or archive.stat().st_size == 0:
                 log.info("Nothing to backup — skipping upload.")
+                _write_status("synced", "Nothing to backup — skipping upload.")
                 return
 
             api.upload_file(
@@ -155,12 +165,13 @@ def sync_once():
             )
             size_kb = archive.stat().st_size // 1024
             log.info("State synced to %s (%d KB)", repo_id, size_kb)
+            _write_status("synced", f"Synced to {repo_id} ({size_kb} KB)")
     except Exception as exc:
         log.warning("Sync failed: %s", exc)
+        _write_status("error", f"Sync failed: {exc}")
 
 
 def loop():
-    """Run sync_once every SYNC_INTERVAL seconds."""
     log.info("Starting periodic sync (interval: %ds)", SYNC_INTERVAL)
     while True:
         time.sleep(SYNC_INTERVAL)

@@ -3,7 +3,7 @@
 # ════════════════════════════════════════════════════════════════
 #
 # Single-container deployment of DeerFlow (frontend + backend + nginx)
-# on port 7860 as required by HF Spaces Docker runtime.
+# Public port 7860 → health-server.js → nginx:7861 → backend:8001 / frontend:3000
 #
 # Build args:
 #   DEER_FLOW_REF  — git ref to clone (branch/tag/sha, default: main)
@@ -63,7 +63,7 @@ ENV LANG=C.UTF-8 \
 
 ARG NODE_MAJOR=22
 
-# Install: Node.js (for Next.js runtime), nginx (reverse proxy), runtime tools
+# Install: Node.js (for health-server + Next.js runtime), nginx (reverse proxy), runtime tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates gnupg nginx jq \
     && mkdir -p /etc/apt/keyrings \
@@ -105,11 +105,19 @@ COPY --from=source --chown=1000:1000 /src/config.example.yaml /app/config.exampl
 COPY --from=frontend-builder --chown=1000:1000 /app/frontend /app/frontend
 
 # ── Copy HuggingFlow runtime scripts ─────────────────────────────
-COPY --chown=1000:1000 nginx.conf  /etc/nginx/nginx.conf
-COPY --chown=1000:1000 start.sh    /app/start.sh
-COPY --chown=1000:1000 flow-sync.py /app/flow-sync.py
+COPY --chown=1000:1000 nginx.conf                  /etc/nginx/nginx.conf
+COPY --chown=1000:1000 start.sh                    /app/start.sh
+COPY --chown=1000:1000 deerflow-sync.py            /app/deerflow-sync.py
+COPY --chown=1000:1000 health-server.js            /app/health-server.js
+COPY --chown=1000:1000 cloudflare-proxy.js         /app/cloudflare-proxy.js
+COPY --chown=1000:1000 cloudflare-proxy-setup.py   /app/cloudflare-proxy-setup.py
+COPY --chown=1000:1000 cloudflare-keepalive-setup.py /app/cloudflare-keepalive-setup.py
 
-RUN chmod +x /app/start.sh /app/flow-sync.py
+RUN chmod +x \
+    /app/start.sh \
+    /app/deerflow-sync.py \
+    /app/cloudflare-proxy-setup.py \
+    /app/cloudflare-keepalive-setup.py
 
 USER user
 WORKDIR /app
