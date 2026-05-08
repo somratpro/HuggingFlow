@@ -3,9 +3,10 @@
 HuggingFlow state sync — backup/restore DeerFlow runtime data to/from HF Dataset.
 
 Syncs:
-  - deerflow.db      (SQLite thread/session database)
+  - deerflow.db      (SQLite thread/session database — WAL-checkpointed before archive)
   - config.yaml      (generated config, may contain user edits)
   - workspace/       (agent-created files in the sandbox workspace)
+  - .secrets/        (persisted AUTH_JWT_SECRET and other generated secrets)
 
 Usage:
   deerflow-sync.py restore    — restore from HF Dataset on startup
@@ -26,15 +27,15 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
-HF_TOKEN          = os.environ.get("HF_TOKEN", "")
-BACKUP_REPO       = os.environ.get("BACKUP_DATASET_NAME", "huggingflow-backup")
-HF_USERNAME       = os.environ.get("HF_USERNAME", "")
-DATA_DIR          = Path(os.environ.get("DEER_FLOW_HOME", "/app/data"))
-CONFIG_PATH       = Path(os.environ.get("DEER_FLOW_CONFIG_PATH", DATA_DIR / "config.yaml"))
-SYNC_INTERVAL     = int(os.environ.get("SYNC_INTERVAL", "600"))
+HF_TOKEN      = os.environ.get("HF_TOKEN", "")
+BACKUP_REPO   = os.environ.get("BACKUP_DATASET_NAME", "huggingflow-backup")
+HF_USERNAME   = os.environ.get("HF_USERNAME", "")
+DATA_DIR      = Path(os.environ.get("DEER_FLOW_HOME", "/app/data"))
+CONFIG_PATH   = Path(os.environ.get("DEER_FLOW_CONFIG_PATH", DATA_DIR / "config.yaml"))
+SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "600"))
 
-ARCHIVE_NAME      = "deerflow-state.tar.gz"
-SYNC_STATUS_FILE  = "/tmp/huggingflow-sync-status.json"
+ARCHIVE_NAME     = "deerflow-state.tar.gz"
+SYNC_STATUS_FILE = "/tmp/huggingflow-sync-status.json"
 
 # Files/dirs to include in the backup archive
 BACKUP_TARGETS = [
@@ -43,6 +44,13 @@ BACKUP_TARGETS = [
     DATA_DIR / ".secrets",   # persists AUTH_JWT_SECRET across restarts
     CONFIG_PATH,
 ]
+
+# SQLite auxiliary files that must NOT be archived (WAL/SHM are runtime-only)
+_SQLITE_AUX_SUFFIXES = {".db-wal", ".db-shm"}
+
+# Upload retry settings
+_UPLOAD_MAX_ATTEMPTS = 4
+_UPLOAD_BACKOFF_BASE = 3   # seconds — doubles each attempt: 3, 6, 12
 
 
 def _write_status(status: str, message: str):
@@ -87,21 +95,80 @@ def _ensure_repo(api, repo_id: str):
         log.warning("Could not ensure dataset repo: %s", exc)
 
 
+def _checkpoint_sqlite():
+    """WAL-checkpoint the SQLite DB before archiving to get a clean snapshot."""
+    db_path = DATA_DIR / "deerflow.db"
+    if not db_path.exists():
+        return
+    try:
+        import sqlite3
+        with sqlite3.connect(str(db_path), timeout=10) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        log.debug("SQLite WAL checkpoint complete.")
+    except Exception as exc:
+        log.warning("SQLite checkpoint failed (continuing anyway): %s", exc)
+
+
+def _should_exclude(path: Path) -> bool:
+    """Return True for SQLite WAL/SHM files that must not be archived."""
+    return path.suffix in _SQLITE_AUX_SUFFIXES
+
+
 def _make_archive(dest: Path):
+    _checkpoint_sqlite()
     with tarfile.open(dest, "w:gz") as tar:
         for target in BACKUP_TARGETS:
-            if target.exists():
+            if not target.exists():
+                continue
+            if target.is_file():
+                if _should_exclude(target):
+                    continue
                 arcname = target.relative_to(DATA_DIR.parent)
                 tar.add(target, arcname=str(arcname))
                 log.debug("  + %s", arcname)
+            elif target.is_dir():
+                for child in sorted(target.rglob("*")):
+                    if child.is_file() and not _should_exclude(child):
+                        arcname = child.relative_to(DATA_DIR.parent)
+                        tar.add(child, arcname=str(arcname))
+                        log.debug("  + %s", arcname)
 
 
 def _extract_archive(src: Path):
     extract_root = DATA_DIR.parent
     with tarfile.open(src, "r:gz") as tar:
-        for member in tar.getmembers():
-            tar.extract(member, path=extract_root)
+        try:
+            # Python 3.12+: use filter='data' for safe extraction
+            tar.extractall(path=extract_root, filter="data")
+        except TypeError:
+            # Older Python without filter param
+            tar.extractall(path=extract_root)  # noqa: S202
     log.info("Extracted state to %s", extract_root)
+
+
+def _upload_with_retry(api, archive: Path, repo_id: str):
+    """Upload archive to HF Dataset with exponential-backoff retries."""
+    last_exc = None
+    for attempt in range(1, _UPLOAD_MAX_ATTEMPTS + 1):
+        try:
+            api.upload_file(
+                path_or_fileobj=str(archive),
+                path_in_repo=ARCHIVE_NAME,
+                repo_id=repo_id,
+                repo_type="dataset",
+                token=HF_TOKEN,
+            )
+            return  # success
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _UPLOAD_MAX_ATTEMPTS:
+                wait = _UPLOAD_BACKOFF_BASE * (2 ** (attempt - 1))
+                log.warning("Upload attempt %d/%d failed: %s — retrying in %ds",
+                            attempt, _UPLOAD_MAX_ATTEMPTS, exc, wait)
+                time.sleep(wait)
+            else:
+                log.warning("Upload failed after %d attempts: %s", _UPLOAD_MAX_ATTEMPTS, exc)
+    raise last_exc
 
 
 def restore():
@@ -157,14 +224,9 @@ def sync_once():
                 _write_status("synced", "Nothing to backup — skipping upload.")
                 return
 
-            api.upload_file(
-                path_or_fileobj=str(archive),
-                path_in_repo=ARCHIVE_NAME,
-                repo_id=repo_id,
-                repo_type="dataset",
-                token=HF_TOKEN,
-            )
             size_kb = archive.stat().st_size // 1024
+            log.info("Uploading state archive (%d KB) to %s...", size_kb, repo_id)
+            _upload_with_retry(api, archive, repo_id)
             log.info("State synced to %s (%d KB)", repo_id, size_kb)
             _write_status("synced", f"Synced to {repo_id} ({size_kb} KB)")
     except Exception as exc:
