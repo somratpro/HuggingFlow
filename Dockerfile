@@ -47,6 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
+ENV UV_HTTP_TIMEOUT=120
+
 WORKDIR /app
 COPY --from=source /src/backend ./backend
 
