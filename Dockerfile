@@ -61,16 +61,18 @@ patched = []
 for p in pathlib.Path("/app/backend").rglob("pyproject.toml"):
     t = p.read_text()
     if "markitdown" in t.lower():
-        print(f"Found in {p}:")
-        for line in t.splitlines():
-            if "markitdown" in line.lower():
-                print(f"  {repr(line)}")
-        if "markitdown[all]" in t:
-            p.write_text(t.replace("markitdown[all]", "markitdown"))
-            patched.append(str(p))
-            print("  -> patched")
-if not patched:
-    print("WARNING: markitdown[all] not found — extras will still be installed", file=sys.stderr)
+        for needle, replacement in [
+            ("markitdown[all,xlsx]", "markitdown[xlsx]"),  # keep xlsx, drop all
+            ("markitdown[all]",      "markitdown"),         # fallback
+        ]:
+            if needle in t:
+                p.write_text(t.replace(needle, replacement))
+                patched.append(f"{p}: {needle!r} -> {replacement!r}")
+                break
+if patched:
+    print("Patched:", patched)
+else:
+    print("WARNING: no markitdown[all] variant found — heavy extras still included", file=sys.stderr)
 PY
 RUN rm -f /app/backend/uv.lock
 
