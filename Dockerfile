@@ -47,13 +47,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
-ENV UV_HTTP_TIMEOUT=120
+ENV UV_HTTP_TIMEOUT=300
 
 WORKDIR /app
 COPY --from=source /src/backend ./backend
 
-# uv sync installs into backend/.venv (isolated from system python)
-RUN cd backend && uv sync
+# uv sync with retry — HF Spaces build network is flaky; uv caches good downloads so retries are fast
+RUN cd backend && \
+    uv sync || \
+    (echo "uv sync attempt 2..." && uv sync) || \
+    (echo "uv sync attempt 3..." && uv sync)
 
 # ── Stage 4: Runtime ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
