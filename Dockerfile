@@ -74,7 +74,6 @@ if patched:
 else:
     print("WARNING: no markitdown[all] variant found — heavy extras still included", file=sys.stderr)
 PY
-RUN rm -f /app/backend/uv.lock
 
 # Retry uv sync up to 10x — uv caches downloaded wheels so each retry
 # only re-fetches the wheel(s) that failed or timed out previously
