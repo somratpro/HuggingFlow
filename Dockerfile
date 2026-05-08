@@ -42,10 +42,17 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
       || (echo "pnpm install retry 3" && pnpm install --frozen-lockfile) )
 
 # SKIP_ENV_VALIDATION=1 bypasses t3-oss env checks (no secrets at build time)
-RUN cd frontend && SKIP_ENV_VALIDATION=1 pnpm build
+# NODE_OPTIONS caps heap to 3 GB — prevents OOMKilled on HF Spaces build servers
+RUN cd frontend && SKIP_ENV_VALIDATION=1 NODE_OPTIONS="--max-old-space-size=3072" pnpm build
 
 # ── Stage 3: Install Python backend dependencies ──────────────────
+# NOTE: COPY --from=frontend-builder serializes this stage after the frontend build.
+# BuildKit would otherwise run both stages in parallel, exhausting HF Spaces build memory.
 FROM python:3.12-slim-bookworm AS backend-builder
+
+# Serialize: wait for frontend stage to finish before starting backend compilation.
+# This prevents OOMKilled caused by Next.js + grpcio compilation running simultaneously.
+COPY --from=frontend-builder /app/frontend/.next/package.json /tmp/.frontend-build-done
 
 COPY --from=uv-source /uv /uvx /usr/local/bin/
 
@@ -54,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_HTTP_TIMEOUT=120 \
-    UV_CONCURRENT_DOWNLOADS=4 \
+    UV_CONCURRENT_DOWNLOADS=2 \
     UV_INDEX_URL=https://pypi.org/simple \
     UV_LINK_MODE=copy
 
