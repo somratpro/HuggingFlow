@@ -14,6 +14,7 @@ Usage:
   deerflow-sync.py loop       — sync-once on an interval (reads SYNC_INTERVAL env)
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -34,8 +35,9 @@ DATA_DIR      = Path(os.environ.get("DEER_FLOW_HOME", "/app/data"))
 CONFIG_PATH   = Path(os.environ.get("DEER_FLOW_CONFIG_PATH", DATA_DIR / "config.yaml"))
 SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "600"))
 
-ARCHIVE_NAME     = "deerflow-state.tar.gz"
-SYNC_STATUS_FILE = "/tmp/huggingflow-sync-status.json"
+ARCHIVE_NAME      = "deerflow-state.tar.gz"
+SYNC_STATUS_FILE  = "/tmp/huggingflow-sync-status.json"
+SYNC_STATE_FILE   = Path("/tmp/huggingflow-sync-state.json")
 
 # Files/dirs to include in the backup archive
 BACKUP_TARGETS = [
@@ -51,6 +53,61 @@ _SQLITE_AUX_SUFFIXES = {".db-wal", ".db-shm"}
 # Upload retry settings
 _UPLOAD_MAX_ATTEMPTS = 4
 _UPLOAD_BACKOFF_BASE = 3   # seconds — doubles each attempt: 3, 6, 12
+
+
+def _metadata_marker() -> tuple[int, int, int]:
+    fc = ts = nm = 0
+    for target in BACKUP_TARGETS:
+        if not target.exists():
+            continue
+        paths = [target] if target.is_file() else list(target.rglob("*"))
+        for path in paths:
+            if not path.is_file() or _should_exclude(path):
+                continue
+            try:
+                st = path.stat()
+                fc += 1
+                ts += int(st.st_size)
+                nm = max(nm, int(st.st_mtime_ns))
+            except OSError:
+                continue
+    return (fc, ts, nm)
+
+
+def _fingerprint_targets() -> str:
+    hasher = hashlib.sha256()
+    for target in BACKUP_TARGETS:
+        if not target.exists():
+            continue
+        paths = [target] if target.is_file() else sorted(p for p in target.rglob("*") if p.is_file())
+        for path in paths:
+            if _should_exclude(path):
+                continue
+            hasher.update(str(path).encode("utf-8"))
+            with path.open("rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _load_sync_state() -> tuple[str | None, tuple | None]:
+    try:
+        if SYNC_STATE_FILE.exists():
+            s = json.loads(SYNC_STATE_FILE.read_text())
+            fp = s.get("fingerprint")
+            m = s.get("marker")
+            if m and len(m) == 3:
+                return fp, tuple(m)
+    except Exception:
+        pass
+    return None, None
+
+
+def _save_sync_state(fingerprint: str, marker: tuple) -> None:
+    try:
+        SYNC_STATE_FILE.write_text(json.dumps({"fingerprint": fingerprint, "marker": list(marker)}))
+    except Exception as exc:
+        log.debug("Could not save sync state: %s", exc)
 
 
 def _write_status(status: str, message: str):
@@ -215,6 +272,19 @@ def sync_once():
         repo_id = _resolve_repo_id(api)
         _ensure_repo(api, repo_id)
 
+        last_fp, last_marker = _load_sync_state()
+        current_marker = _metadata_marker()
+        if last_marker is not None and current_marker == last_marker:
+            log.info("No state changes detected.")
+            _write_status("synced", "No state changes detected.")
+            return
+
+        current_fp = _fingerprint_targets()
+        if last_fp is not None and current_fp == last_fp:
+            log.info("No state changes detected.")
+            _write_status("synced", "No state changes detected.")
+            return
+
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / ARCHIVE_NAME
             _make_archive(archive)
@@ -229,6 +299,7 @@ def sync_once():
             _upload_with_retry(api, archive, repo_id)
             log.info("State synced to %s (%d KB)", repo_id, size_kb)
             _write_status("synced", f"Synced to {repo_id} ({size_kb} KB)")
+            _save_sync_state(current_fp, current_marker)
     except Exception as exc:
         log.warning("Sync failed: %s", exc)
         _write_status("error", f"Sync failed: {exc}")
