@@ -116,10 +116,9 @@ case "$LLM_PROVIDER" in
     SUPPORTS_THINKING="true"
     ;;
   google|gemini)
-    export GEMINI_API_KEY="${GEMINI_API_KEY:-$LLM_API_KEY}"
     export GOOGLE_API_KEY="${GOOGLE_API_KEY:-$LLM_API_KEY}"
     LANGCHAIN_CLASS="langchain_google_genai:ChatGoogleGenerativeAI"
-    API_KEY_FIELD="gemini_api_key"
+    API_KEY_FIELD="google_api_key"
     LLM_MODEL_NAME="${LLM_MODEL_NAME:-$LLM_PROVIDER}"
     SUPPORTS_THINKING="true"
     ;;
@@ -377,16 +376,53 @@ nginx -t 2>/dev/null && nginx || {
   exit 1
 }
 
+# ── Logging config: silence per-request noise ────────────────────
+cat > /tmp/logging-config.json << 'LOGEOF'
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "default": {
+      "()": "uvicorn.logging.DefaultFormatter",
+      "fmt": "%(levelprefix)s %(message)s",
+      "use_colors": null
+    },
+    "access": {
+      "()": "uvicorn.logging.AccessFormatter",
+      "fmt": "%(levelprefix)s %(client_addr)s - \"%(request_line)s\" %(status_code)s"
+    }
+  },
+  "handlers": {
+    "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stdout"},
+    "access":  {"formatter": "access",  "class": "logging.StreamHandler", "stream": "ext://sys.stdout"}
+  },
+  "loggers": {
+    "uvicorn":        {"handlers": ["default"], "level": "INFO", "propagate": false},
+    "uvicorn.error":  {"level": "INFO"},
+    "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": false},
+    "google_genai":          {"level": "WARNING"},
+    "google_genai.models":   {"level": "WARNING"},
+    "google_genai._api_client": {"level": "WARNING"},
+    "httpx":  {"level": "WARNING"},
+    "primp":  {"level": "WARNING"},
+    "ddgs":   {"level": "WARNING"}
+  },
+  "root": {"level": "INFO", "handlers": ["default"]}
+}
+LOGEOF
+
 # ── Start backend (uvicorn) ───────────────────────────────────────
 echo "Starting DeerFlow backend on port $BACKEND_PORT..."
 (
   cd "$APP_DIR/backend" && \
   PYTHONPATH=. \
+  PYTHONWARNINGS="ignore::UserWarning:pydantic" \
   uv run --no-sync \
     uvicorn app.gateway.app:app \
       --host 127.0.0.1 \
       --port "$BACKEND_PORT" \
       --workers 1 \
+      --log-config /tmp/logging-config.json \
     2>&1 | tee -a "$DATA_DIR/logs/backend.log"
 ) &
 BACKEND_PID=$!
