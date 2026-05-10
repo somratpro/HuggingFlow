@@ -8,6 +8,7 @@ const fs   = require("fs");
 const PUBLIC_PORT    = parseInt(process.env.PORT || "7860", 10);
 const NGINX_PORT     = parseInt(process.env.NGINX_PORT || "7861", 10);
 const NGINX_HOST     = "127.0.0.1";
+const BACKEND_PORT   = parseInt(process.env.BACKEND_PORT || "8001", 10);
 const FRONTEND_PORT  = parseInt(process.env.FRONTEND_PORT || "3000", 10);
 const startTime    = Date.now();
 
@@ -219,7 +220,7 @@ const server = http.createServer(async (req, res) => {
   // Health — JSON for HEALTHCHECK and load balancers
   if (pathname === "/health") {
     const [backendUp, frontendUp] = await Promise.all([
-      probe(NGINX_HOST, NGINX_PORT, "/health"),
+      probe(NGINX_HOST, BACKEND_PORT, "/health"),
       tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     const ok = backendUp && frontendUp;
@@ -236,7 +237,7 @@ const server = http.createServer(async (req, res) => {
   // Status — full JSON payload
   if (pathname === "/status") {
     const [backendUp, frontendUp] = await Promise.all([
-      probe(NGINX_HOST, NGINX_PORT, "/health"),
+      probe(NGINX_HOST, BACKEND_PORT, "/health"),
       tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -253,7 +254,7 @@ const server = http.createServer(async (req, res) => {
   // Dashboard — HTML status page (served at / and /dashboard)
   if (pathname === "/" || pathname === "/dashboard") {
     const [backendUp, frontendUp] = await Promise.all([
-      probe(NGINX_HOST, NGINX_PORT, "/health"),
+      probe(NGINX_HOST, BACKEND_PORT, "/health"),
       tcpProbe(NGINX_HOST, FRONTEND_PORT),
     ]);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
