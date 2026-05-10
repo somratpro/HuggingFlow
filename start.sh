@@ -376,11 +376,26 @@ nginx -t 2>/dev/null && nginx || {
   exit 1
 }
 
+# ── Custom log filter: drop /health from uvicorn access log ───────
+cat > /tmp/hf_log_filter.py << 'EOF'
+import logging
+
+class HealthEndpointFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            return record.scope.get("path", "") != "/health"
+        except AttributeError:
+            return "/health" not in record.getMessage()
+EOF
+
 # ── Logging config: silence per-request noise ────────────────────
 cat > /tmp/logging-config.json << 'LOGEOF'
 {
   "version": 1,
   "disable_existing_loggers": false,
+  "filters": {
+    "no_health": {"()": "hf_log_filter.HealthEndpointFilter"}
+  },
   "formatters": {
     "default": {
       "()": "uvicorn.logging.DefaultFormatter",
@@ -394,14 +409,14 @@ cat > /tmp/logging-config.json << 'LOGEOF'
   },
   "handlers": {
     "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stdout"},
-    "access":  {"formatter": "access",  "class": "logging.StreamHandler", "stream": "ext://sys.stdout"}
+    "access":  {"formatter": "access",  "class": "logging.StreamHandler", "stream": "ext://sys.stdout", "filters": ["no_health"]}
   },
   "loggers": {
     "uvicorn":        {"handlers": ["default"], "level": "INFO", "propagate": false},
     "uvicorn.error":  {"level": "INFO"},
     "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": false},
-    "google_genai":          {"level": "WARNING"},
-    "google_genai.models":   {"level": "WARNING"},
+    "google_genai":             {"level": "WARNING"},
+    "google_genai.models":      {"level": "WARNING"},
     "google_genai._api_client": {"level": "WARNING"},
     "httpx":  {"level": "WARNING"},
     "primp":  {"level": "WARNING"},
@@ -415,7 +430,7 @@ LOGEOF
 echo "Starting DeerFlow backend on port $BACKEND_PORT..."
 (
   cd "$APP_DIR/backend" && \
-  PYTHONPATH=. \
+  PYTHONPATH=".:/tmp" \
   PYTHONWARNINGS="ignore::UserWarning:pydantic" \
   uv run --no-sync \
     uvicorn app.gateway.app:app \
