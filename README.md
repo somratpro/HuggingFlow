@@ -22,8 +22,6 @@ secrets:
     description: "Cloudflare API token — auto-creates an outbound proxy Worker and a keep-awake cron Worker."
 ---
 
-<div align="center">
-
 # 🦌 HuggingFlow
 
 **[DeerFlow](https://github.com/bytedance/deer-flow) research agent — one-click deploy on Hugging Face Spaces**
@@ -33,9 +31,11 @@ secrets:
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-single--container-2496ED?logo=docker)](Dockerfile)
 
+⚠️ WARNING: USING THIS PROJECT MAY LEAD TO THE SUSPENSION OF YOUR HUGGINGFACE ACCOUNT.
+
 *Self-hosted deep-research AI · multi-provider LLM · streaming SSE · dataset backup*
 
-</div>
+
 
 ---
 
